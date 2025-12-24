@@ -86,14 +86,16 @@ namespace VoidOS
                 tmWindow.Controls.Add(ram);
 
                 windows.Add(tmWindow);
+                focusedWindow = tmWindow;
             };
             startMenuWindow.Controls.Add(tmDownButton);
 
             var terminalButton = new Button(10, 110, 180, 30, "Terminal", Color.Gray, Color.White);
             terminalButton.OnClick = () =>
             {
-                var terminalWindow = new TerminalApp(150, 50, 500, 500, "Terminal", Color.Black);
+                var terminalWindow = new TerminalApp(150, 50, 650, 500, "Terminal", Color.Black);
                 windows.Add(terminalWindow);
+                focusedWindow = terminalWindow;
             };
             startMenuWindow.Controls.Add(terminalButton);
 
@@ -102,6 +104,7 @@ namespace VoidOS
             {
                 var fileExplorerWindow = new FileExplorerApp(200, 100, 500, 400, "File Explorer", Color.Gray);
                 windows.Add(fileExplorerWindow);
+                focusedWindow = fileExplorerWindow;
             };
             startMenuWindow.Controls.Add(fileExplorerButton);
 

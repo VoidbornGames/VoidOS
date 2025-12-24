@@ -71,6 +71,7 @@ namespace VoidOS.Models
         public int X, Y, Width, Height;
         public string Title;
         public Color Color;
+        public AppState AppState;
         public List<Control> Controls = new List<Control>();
         public const int TitleBarHeight = 25;
         public const int CloseButtonSize = 16;
@@ -209,4 +210,13 @@ namespace VoidOS.Models
             canvas.DrawImage(this, posX, posY);
         }
     }
+    public enum AppState
+    {
+        Created,
+        Running,
+        Minimized,
+        Suspended,
+        Closed
+    }
+
 }

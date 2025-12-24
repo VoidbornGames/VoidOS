@@ -56,6 +56,7 @@ namespace VoidOS.Apps
             outputLines.Add("VoidOS Terminal v1.0");
             outputLines.Add("Type 'help' for available commands");
             outputLines.Add(" ");
+            AppState = AppState.Running;
         }
 
         public void AddOutput(string text)
@@ -76,32 +77,129 @@ namespace VoidOS.Apps
 
             switch (cmd)
             {
+                case "?":
+                case "/?":
                 case "help":
                     AddOutput("Available commands:");
-                    AddOutput("  help         |- Show this help message");
-                    AddOutput("  clear/cls    |- Clear the terminal");
-                    AddOutput("  date         |- Show current date and time");
-                    AddOutput("  time         |- Show current time");
-                    AddOutput("  sysinfo      |- Show system information");
-                    AddOutput("  cpu          |- Show detailed CPU information");
-                    AddOutput("  mem          |- Show detailed memory information");
-                    AddOutput("  echo [text]  |- Display the specified text");
-                    AddOutput("  color [0-15] |- Change terminal color");
-                    AddOutput("  ver          |- Show OS version");
-                    AddOutput("  about        |- About information");
-                    AddOutput("  reboot       |- Reboot the system");
-                    AddOutput("  shutdown     |- Shutdown the system");
-                    AddOutput("  ps           |- List running processes");
-                    AddOutput("  history      |- Show command history");
-                    AddOutput("  beep         |- Make a beep sound");
-                    AddOutput("  uptime       |- Show system uptime");
-                    AddOutput("  dir          |- Show a list of files and directories");
-                    AddOutput("  cd           |- Use to move between directories");
-                    AddOutput("  see/peek     |- Opens the file with notepath");
-                    AddOutput("  disks        |- List the system disks");
-                    AddOutput("  exit         |- Close the terminal");
+                    AddOutput("  help           |- Show this help message");
+                    AddOutput("  clear/cls      |- Clear the terminal");
+                    AddOutput("  date           |- Show current date and time");
+                    AddOutput("  time           |- Show current time");
+                    AddOutput("  sysinfo        |- Show system information");
+                    AddOutput("  cpu            |- Show detailed CPU information");
+                    AddOutput("  mem            |- Show detailed memory information");
+                    AddOutput("  echo <text>    |- Display the specified text");
+                    AddOutput("  color <0-15>   |- Change terminal color");
+                    AddOutput("  ver            |- Show OS version");
+                    AddOutput("  about          |- About information");
+                    AddOutput("  reboot         |- Reboot the system");
+                    AddOutput("  shutdown       |- Shutdown the system");
+                    AddOutput("  kill <PID>     |- Kills a process using its PID");
+                    AddOutput("  ps             |- List running processes");
+                    AddOutput("  history        |- Show command history");
+                    AddOutput("  beep           |- Make a beep sound");
+                    AddOutput("  uptime         |- Show system uptime");
+                    AddOutput("  dir            |- Show a list of files and directories");
+                    AddOutput("  cd             |- Use to move between directories");
+                    AddOutput("  rm [-r] <Name> |- Use to move between directories");
+                    AddOutput("  mk <Name>      |- Makes a new file, usage: mk hello.txt");
+                    AddOutput("  mkdir <Name>   |- Makes a new Directory");
+                    AddOutput("  see/peek       |- Opens the file with notepath");
+                    AddOutput("  disks          |- List the system disks");
+                    AddOutput("  exit           |- Close the terminal");
+                    AddOutput("  /?-2           |- Shows a list of advanced commands");
                     break;
 
+                case "/?-2":
+                    AddOutput("Advanced commands:");
+                    AddOutput("  /?-2           |- Show this help message");
+                    break;
+
+                case "kill":
+                    var killUserIn = parts[1];
+                    if (int.TryParse(killUserIn, out int result))
+                        windows.RemoveAt(result);
+                    else
+                        AddOutput($"Invalid PID: {killUserIn}");
+                    break;
+
+                case "rm":
+                    var rmUserIn = string.Join(" ", parts, 1, parts.Length - 1);
+                    if (rmUserIn.Contains("\\") || rmUserIn.Contains(@"0:\") || rmUserIn.Contains(":") || string.IsNullOrEmpty(rmUserIn))
+                    {
+                        AddOutput($"Invalid name: {rmUserIn}");
+                        break;
+                    }
+
+                    if (rmUserIn.Contains("-r"))
+                    {
+                        var rmPath = string.Join(" ", parts, 2, parts.Length - 2);
+                        if (rmPath.Contains("\\") || rmPath.Contains(@"0:\") || rmPath.Contains(":") || string.IsNullOrEmpty(rmPath))
+                        {
+                            AddOutput($"Invalid name: {rmPath}");
+                            break;
+                        }
+
+                        var rmDirPath = VoidPath.Combine(currentPath, rmPath);
+                        if (VFSManager.DirectoryExists(rmDirPath))
+                            VFSManager.DeleteDirectory(rmDirPath, true);
+                        else
+                            AddOutput($"Directory dont exist: {rmDirPath}");
+                    }
+                    else
+                    {
+                        var rmFilePath = VoidPath.Combine(currentPath, rmUserIn);
+                        rmFilePath = rmFilePath.Substring(0, rmFilePath.Length - 1);
+                        if (VFSManager.FileExists(rmFilePath))
+                            VFSManager.DeleteFile(rmFilePath);
+                        else
+                            AddOutput($"File dont exist: {rmFilePath}");
+                    }
+                    break;
+
+                case "mk":
+                case "make":
+                    var mkFilePath = string.Join(" ", parts, 1, parts.Length - 1);
+                    if (mkFilePath.Contains("\\") || mkFilePath.Contains(@"0:\") || mkFilePath.Contains(":") || string.IsNullOrEmpty(mkFilePath))
+                    {
+                        AddOutput($"Invalid name: {mkFilePath}");
+                        break;
+                    }
+                    
+                    var createPath = VoidPath.Combine(currentPath, mkFilePath);
+                    createPath = createPath.Substring(0, createPath.Length - 1);
+                    if (!VFSManager.FileExists(createPath))
+                    {
+                        VFSManager.CreateFile(createPath);
+                        AddOutput($"Created file: {mkFilePath} | In path: {createPath}");
+                    }
+                    else
+                    {
+                        AddOutput($"File already exist: {createPath}");
+                    }
+                    break;
+
+                case "mkdir":
+                case "makedir":
+                case "mkdirectory":
+                case "makedirectory":
+                    var dirPath = string.Join(" ", parts, 1, parts.Length - 1);
+                    if (dirPath.Contains("\\") || dirPath.Contains(@"0:\") || dirPath.Contains(":") || string.IsNullOrEmpty(dirPath))
+                    {
+                        AddOutput($"Invalid name: {dirPath}");
+                        break;
+                    }
+
+                    if (!VFSManager.DirectoryExists(VoidPath.Combine(currentPath, dirPath)))
+                    {
+                        VFSManager.CreateDirectory(VoidPath.Combine(currentPath, dirPath));
+                        AddOutput($"Created directory: {dirPath} | In path: {VoidPath.Combine(currentPath, dirPath)}");
+                    }
+                    else
+                    {
+                        AddOutput($"Directory already exist: {VoidPath.Combine(currentPath, dirPath)}");
+                    }
+                    break;
 
                 case "peek":
                 case "see":
@@ -325,11 +423,27 @@ namespace VoidOS.Apps
                 case "processes":
                 case "processlist":
                     AddOutput("Running Processes:");
-                    AddOutput($"  PID  NAME           CPU   MEM");
-                    AddOutput($"  ---  ----           ---   ---");
-                    AddOutput($"  001  Kernel         5%    12MB");
-                    AddOutput($"  002  GUI            15%   24MB");
-                    AddOutput($"  003  Terminal       2%    4MB");
+                    int maxPidWidth = "PID".Length;
+                    int maxNameWidth = "NAME".Length;
+
+                    for (int i = 0; i < windows.Count; i++)
+                    {
+                        int currentPidLen = i.ToString().Length;
+                        int currentNameLen = windows[i].ToString().Length;
+
+                        if (currentPidLen > maxPidWidth)
+                            maxPidWidth = currentPidLen;
+
+                        if (currentNameLen > maxNameWidth)
+                            maxNameWidth = currentNameLen;
+                    }
+                    AddOutput($"  {"PID".PadRight(maxPidWidth)} | {"NAME".PadRight(maxNameWidth)}");
+                    AddOutput($"  {new string('-', maxPidWidth)}-|-{new string('-', maxNameWidth)}");
+
+                    for (int i = 0; i < windows.Count; i++)
+                    {
+                        AddOutput($"  {i.ToString().PadRight(maxPidWidth)} | {windows[i].ToString().PadRight(maxNameWidth)}");
+                    }
                     break;
 
                 case "history":
@@ -424,6 +538,7 @@ namespace VoidOS.Apps
             upButton.OnClick = () => { GoUp(); };
             Controls.Add(upButton);
             Refresh();
+            AppState = AppState.Running;
         }
 
         private void Refresh()
@@ -562,6 +677,7 @@ namespace VoidOS.Apps
                 }
             };
             Controls.Add(saveBtn);
+            AppState = AppState.Running;
         }
 
         public void AddOutput(string text)
@@ -587,6 +703,7 @@ namespace VoidOS.Apps
                     if (string.IsNullOrEmpty(content))
                     {
                         Title = $"NotePath - {fileName} | Empty";
+                        AddOutput(" ");
                         return;
                     }
 
