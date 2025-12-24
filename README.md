@@ -1,4 +1,4 @@
-# VoidOS   ![Version](https://img.shields.io/badge/version-1.0.0-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Build](https://img.shields.io/badge/build-passing-success) ![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
+# VoidOS   ![Version](https://img.shields.io/badge/version-1.0.0-blue?style=flat-square&label=Beta) ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square&label=License&color=blue) ![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen?style=flat-square&label=Coverage&color=blue)
 A GUI-based operating system built with Cosmos, exploring modern OS design and custom interfaces. It was build with expantion in mind and has a powerfull windows like GUI system.
 
 ### OS Preview Imgae
