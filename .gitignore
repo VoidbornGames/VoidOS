@@ -1,0 +1,27 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.cache
+*.v2
+*.bin
+
+# Build outputs
+bin/
+obj/
+*.pdb
+*.dll
+*.exe
+*.deps.json
+*.runtimeconfig.json
+*.zip
+*.asm
+*.html
+*.iso
+*.obj
+*.bin
+*.log
+*.EFI
+*.cfg
+*.sys
+*.cdb
