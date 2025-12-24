@@ -20,5 +20,13 @@ A GUI-based operating system built with Cosmos, exploring modern OS design and c
 | Window System | 🖼️ | Windows like window system |
 | Applications | 📱 | Easy Application creating |
 
+## System Default Apps
+| Applications | Status |
+|----------|----------|
+| File Explorer | ✅ |
+| NotePath | ✅ |
+| Task Manager | ✅ |
+| Terminal | ✅ |
+
 ## License
 ### [MIT](LICENSE) © Alireza Janaki
