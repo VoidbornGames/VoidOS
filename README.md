@@ -1,6 +1,17 @@
 # VoidOS   ![Version](https://img.shields.io/badge/version-1.0.0-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Build](https://img.shields.io/badge/build-passing-success) ![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
 A GUI-based operating system built with Cosmos, exploring modern OS design and custom interfaces. It was build with expantion in mind and has a powerfull windows like GUI system.
 
+### OS Preview Imgae
+<img src="https://github.com/VoidbornGames/VoidOS/blob/main/Preview.png" alt="Preview">
+
+
+## 📊 Progress
+### **Current Status: Beta v1.0.0**
+
+- **Overall**: ------------> [████░░░░░░░░░░░░░░░░] 20%
+- **Core Features**: -----> [██████░░░░░░░░░░░░░░] 30%
+- **Documentation**: ---> [░░░░░░░░░░░░░░░░░░░░] 0%
+- **Testing**: ------------> [██████░░░░░░░░░░░░░░] 30%
 
 ## Features
 | Feature | 🎗️ | Description |
@@ -9,3 +20,5 @@ A GUI-based operating system built with Cosmos, exploring modern OS design and c
 | Window System | 🖼️ | Windows like window system |
 | Applications | 📱 | Easy Application creating |
 
+## License
+### [MIT](LICENSE) © Alireza Janaki
