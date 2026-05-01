@@ -1,0 +1,19 @@
+﻿<Project Sdk="Cosmos.Sdk/3.0.57">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <!-- Core kernel packages -->
+  <ItemGroup>
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.57" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.57" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <GCCProject Include="./src/C/" />
+    <!--DirectPInvoke Include="cpu" /-->
+  </ItemGroup>
+
+</Project>
