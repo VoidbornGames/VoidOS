@@ -63,17 +63,16 @@ CommandManager.Register(new EchoCommand());
 ## 🚀 Getting Started
 
 ### Prerequisites
-* Visual Studio 2022 (with `.NET 8.0` or higher desktop development workload)
-* [Cosmos SDK](https://cosmosos.com/) (Gen3 User Kit)
+* Visual Studio 2026 or VS Code (with `.NET 10.0`)
+* [Cosmos SDK](https://valentinbreiz.github.io/nativeaot-patcher/articles/install.html) (Gen3 Install Docs)
+* [Cosmos Tools](https://valentinbreiz.github.io/nativeaot-patcher/articles/install.html)
 
 ### Building & Running
 1. Clone the repository:
    ```bash
    git clone https://github.com/VoidbornGames/VoidOS.git
    ```
-2. Open `VoidOS.sln` in Visual Studio.
-3. Set the boot project to the Cosmos project (not the standard .NET one).
-4. Press **F5** to build the ISO and launch it in your configured VM (QEMU/VMware).
+2. Run command ```cosmos build``` then ```cosmos run```.
 
 ## 📜 License
 ### [MIT](LICENSE) © Alireza Janaki
