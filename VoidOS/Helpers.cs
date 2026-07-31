@@ -9,11 +9,14 @@ public static class PathHelper
 {
     public static string Resolve(string input)
     {
-        input = input.Replace("\\", "/");
+        if (string.IsNullOrWhiteSpace(input) || input == ".")
+            return Kernel.CurrentPath;
 
-        if (input.StartsWith("0:/")) return input;
-        if (input.StartsWith("/")) return "0:" + input;
+        if (input == "..")
+            return Path.GetFullPath(Path.Combine(Kernel.CurrentPath, ".."));
 
-        return Kernel.CurrentPath + input;
+        return Path.IsPathRooted(input)
+            ? Path.GetFullPath(input)
+            : Path.GetFullPath(Path.Combine(Kernel.CurrentPath, input));
     }
 }

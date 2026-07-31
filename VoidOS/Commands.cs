@@ -1,9 +1,11 @@
-﻿using Cosmos.Kernel.System.Network;
+﻿using Cosmos.Kernel.Core.Memory;
+using Cosmos.Kernel.System.Network;
 using Cosmos.Kernel.System.Network.Config;
 using Cosmos.Kernel.System.Network.IPv4;
 using Cosmos.Kernel.System.Network.IPv4.UDP.DNS;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using Thread = System.Threading.Thread;
 
@@ -113,20 +115,6 @@ public class EchoCommand : BaseCommand
     public override string Execute(string[] args) { return args.Length == 0 ? "Usage: echo <text>" : string.Join(" ", args); }
 }
 
-public class ChangeRemotePassCommand : BaseCommand
-{
-    private static readonly string[] AliasesArr = new string[] { "rpass", "vrspass" };
-    public override string Name { get { return "remotepass"; } }
-    public override string[] Aliases { get { return AliasesArr; } }
-    public override string Description { get { return "Change VRS password"; } }
-    public override string Execute(string[] args)
-    {
-        if (args.Length == 0) return "Usage: remotepass <password>";
-        Kernel.RemotePassword = args[0];
-        return "Password changed!";
-    }
-}
-
 public class NslookupCommand : BaseCommand
 {
     private static readonly string[] AliasesArr = new string[] { "resolve", "dns" };
@@ -143,10 +131,33 @@ public class NslookupCommand : BaseCommand
             dnsClient.Connect(new Address(8, 8, 8, 8));
             dnsClient.SendAsk(args[0]);
             Address resolvedIP = dnsClient.Receive(5000);
-            if (resolvedIP != null && resolvedIP.Hash != 0) return $"{args[0]} resolves to -> {resolvedIP.ToString()}";
+            if (resolvedIP != null && resolvedIP.GetHashCode() != 0) return $"{args[0]} resolves to -> {resolvedIP.ToString()}";
             else return "DNS query timed out or failed.";
         }
         catch (Exception ex) { return $"DNS Error: {ex.Message}"; }
+    }
+}
+
+public class CdCommand : BaseCommand
+{
+    public override string Name { get { return "cd"; } }
+    public override string Description { get { return "Change directory"; } }
+
+    public override string Execute(string[] args)
+    {
+        if (args.Length <= 0)
+        {
+            Kernel.CurrentPath = "/";
+            return "";
+        }
+
+        var targetPath = PathHelper.Resolve(args[0]);
+
+        if (!Directory.Exists(targetPath))
+            return $"cd: no such directory: {args[0]}";
+
+        Kernel.CurrentPath = targetPath;
+        return "";
     }
 }
 
@@ -156,37 +167,62 @@ public class LsCommand : BaseCommand
     public override string Name { get { return "ls"; } }
     public override string[] Aliases { get { return AliasesArr; } }
     public override string Description { get { return "List directory contents"; } }
-    public override string Execute(string[] args) { return "Error: File system is not mounted or no hard drive is mapped in QEMU."; }
-}
 
-public class CdCommand : BaseCommand
-{
-    public override string Name { get { return "cd"; } }
-    public override string Description { get { return "Change directory"; } }
-    public override string Execute(string[] args) { return "Error: File system is not mounted."; }
-}
+    public override string Execute(string[] args)
+    {
+        var targetPath = args.Length >= 1 ? PathHelper.Resolve(args[0]) : Kernel.CurrentPath;
 
-public class CatCommand : BaseCommand
-{
-    private static readonly string[] AliasesArr = new string[] { "type", "more" };
-    public override string Name { get { return "cat"; } }
-    public override string[] Aliases { get { return AliasesArr; } }
-    public override string Description { get { return "Display file contents"; } }
-    public override string Execute(string[] args) { return "Error: File system is not mounted."; }
-}
+        if (!Directory.Exists(targetPath))
+            return $"ls: no such directory: {(args.Length >= 1 ? args[0] : targetPath)}";
 
-public class TouchCommand : BaseCommand
-{
-    public override string Name { get { return "touch"; } }
-    public override string Description { get { return "Create empty file"; } }
-    public override string Execute(string[] args) { return "Error: File system is not mounted."; }
+        try
+        {
+            var dirs = Directory.GetDirectories(targetPath).OrderBy(d => d).ToArray();
+            var files = Directory.GetFiles(targetPath).OrderBy(f => f).ToArray();
+
+            var builder = new StringBuilder();
+            builder.AppendLine();
+            foreach (var dir in dirs)
+                builder.AppendLine($"-- Dir    {Path.GetFileName(dir)}");
+            foreach (var file in files)
+                builder.AppendLine($"--        {Path.GetFileName(file)}");
+            builder.AppendLine();
+            builder.AppendLine($"{dirs.Length} Directories | {files.Length} Files");
+            builder.AppendLine();
+            return builder.ToString();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return $"ls: permission denied: {targetPath}";
+        }
+    }
 }
 
 public class MkdirCommand : BaseCommand
 {
     public override string Name { get { return "mkdir"; } }
     public override string Description { get { return "Create directory"; } }
-    public override string Execute(string[] args) { return "Error: File system is not mounted."; }
+
+    public override string Execute(string[] args)
+    {
+        if (args.Length != 1)
+            return "Usage: mkdir <name>";
+
+        var targetPath = PathHelper.Resolve(args[0]);
+
+        if (Directory.Exists(targetPath))
+            return $"mkdir: directory already exists: {args[0]}";
+
+        try
+        {
+            Directory.CreateDirectory(targetPath);
+            return "";
+        }
+        catch (Exception ex)
+        {
+            return $"mkdir: cannot create directory: {ex.Message}";
+        }
+    }
 }
 
 public class RmCommand : BaseCommand
@@ -195,14 +231,115 @@ public class RmCommand : BaseCommand
     public override string Name { get { return "rm"; } }
     public override string[] Aliases { get { return AliasesArr; } }
     public override string Description { get { return "Remove file or directory"; } }
-    public override string Execute(string[] args) { return "Error: File system is not mounted."; }
+
+    public override string Execute(string[] args)
+    {
+        if (args.Length != 1)
+            return "Usage: rm <name>";
+
+        var targetPath = PathHelper.Resolve(args[0]);
+
+        try
+        {
+            if (Directory.Exists(targetPath))
+            {
+                Directory.Delete(targetPath, recursive: false);
+                return "";
+            }
+            if (File.Exists(targetPath))
+            {
+                File.Delete(targetPath);
+                return "";
+            }
+            return $"rm: no such file or directory: {args[0]}";
+        }
+        catch (IOException)
+        {
+            return $"rm: directory not empty: {args[0]} (use rm -r to remove recursively)";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return $"rm: permission denied: {args[0]}";
+        }
+        catch (Exception ex)
+        {
+            return $"rm: cannot remove: {ex.Message}";
+        }
+    }
+}
+
+public class CatCommand : BaseCommand
+{
+    private static readonly string[] AliasesArr = new string[] { "type", "more" };
+    public override string Name { get { return "cat"; } }
+    public override string[] Aliases { get { return AliasesArr; } }
+    public override string Description { get { return "Display file contents"; } }
+
+    public override string Execute(string[] args)
+    {
+        if (args.Length != 1)
+            return "Usage: cat <file>";
+
+        var targetPath = PathHelper.Resolve(args[0]);
+
+        if (!File.Exists(targetPath))
+            return $"cat: no such file: {args[0]}";
+
+        try
+        {
+            return File.ReadAllText(targetPath);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return $"cat: permission denied: {args[0]}";
+        }
+        catch (Exception ex)
+        {
+            return $"cat: cannot read file: {ex.Message}";
+        }
+    }
+}
+
+public class TouchCommand : BaseCommand
+{
+    public override string Name { get { return "touch"; } }
+    public override string Description { get { return "Create empty file"; } }
+
+    public override string Execute(string[] args)
+    {
+        if (args.Length != 1)
+            return "Usage: touch <file>";
+
+        var targetPath = PathHelper.Resolve(args[0]);
+
+        try
+        {
+            if (!File.Exists(targetPath))
+                File.Create(targetPath).Dispose();
+            else
+                File.SetLastWriteTime(targetPath, DateTime.Now);
+            return "";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return $"touch: permission denied: {args[0]}";
+        }
+        catch (Exception ex)
+        {
+            return $"touch: cannot create file: {ex.Message}";
+        }
+    }
 }
 
 public class MemCommand : BaseCommand
 {
     public override string Name { get { return "mem"; } }
     public override string Description { get { return "Show memory usage"; } }
-    public override string Execute(string[] args) { return "Memory usage data unavailable (HAL namespace missing)."; }
+
+    public override string Execute(string[] args)
+    {
+        return "Memory usage data unavailable.";
+    }
 }
 
 public class TasksCommand : BaseCommand
@@ -235,32 +372,43 @@ public class SysInfoCommand : BaseCommand
     public override string[] Aliases { get { return AliasesArr; } }
     public override string Description { get { return "Display system information"; } }
 
+    [DllImport("*", EntryPoint = "get_cpu_brand")] public static extern IntPtr get_cpu_brand();
+    [DllImport("*", EntryPoint = "get_ram_info")] public static extern IntPtr get_ram_info();
+
     public override string Execute(string[] args)
     {
+        ulong totalPages = PageAllocator.TotalPageCount;
+        ulong freePages = PageAllocator.FreePageCount;
+        ulong usedPages = totalPages - freePages;
+        ulong pageSize = PageAllocator.PageSize;
+
+        ulong total = totalPages * pageSize / 1024 / 1024;
+        ulong used = usedPages * pageSize / 1024 / 1024;
+
         var sb = new StringBuilder();
-        sb.AppendLine("╔══════════════════════════════════════╗");
-        sb.AppendLine("║         VOIDOS SYSTEM INFO           ║");
-        sb.AppendLine("╠══════════════════════════════════════╣");
-        sb.AppendLine(Line("OS Name:", "VoidOS v1.0"));
+        sb.AppendLine("+--------------------------------------+");
+        sb.AppendLine("|          VOIDOS SYSTEM INFO          |");
+        sb.AppendLine("+--------------------------------------+");
+        sb.AppendLine(Line("OS Name:", "VoidOS v3.0.49"));
         sb.AppendLine(Line("Kernel:", "Cosmos Gen3"));
         sb.AppendLine(Line("Uptime:", GetUptime()));
-        sb.AppendLine(Line("CPU:", "x86/x64"));
-        sb.AppendLine(Line("Memory:", "N/A"));
-        sb.AppendLine("╠══════════════════════════════════════╣");
-        sb.AppendLine("║         NETWORK STATUS              ║");
-        sb.AppendLine("╠══════════════════════════════════════╣");
+        sb.AppendLine(Line("CPU:", Marshal.PtrToStringAnsi(get_cpu_brand())));
+        sb.AppendLine(Line("Memory:", $"{used}/{total} MB"));
+        sb.AppendLine("+--------------------------------------+");
+        sb.AppendLine("|          NETWORK STATUS              |");
+        sb.AppendLine("+--------------------------------------+");
         sb.AppendLine(Line("Device:", GetNetDevice()));
         sb.AppendLine(Line("IP:", GetIP()));
         sb.AppendLine(Line("Link:", GetLinkStatus()));
-        sb.AppendLine("╠══════════════════════════════════════╣");
-        sb.AppendLine("║         SERVICES                    ║");
-        sb.AppendLine("╠══════════════════════════════════════╣");
-        sb.AppendLine(Line("VRS (23):", Kernel.VrsRunning ? "RUNNING" : "STOPPED"));
-        sb.AppendLine("╚══════════════════════════════════════╝");
+        sb.AppendLine("+--------------------------------------+");
+        sb.AppendLine("|          SERVICES                    |");
+        sb.AppendLine("+--------------------------------------+");
+        sb.AppendLine(Line("SSH Server:", Kernel.SshRunning ? "RUNNING" : "STOPPED"));
+        sb.AppendLine("+--------------------------------------+");
         return sb.ToString();
     }
 
-    private static string Line(string label, string value) { return "║ " + label + value.PadRight(38 - label.Length) + "║"; }
+    private static string Line(string label, string value) { return "| " + label + value.PadRight(38 - label.Length) + " |"; }
     private static string GetUptime() { var uptime = DateTime.UtcNow - Kernel.BootTime; return $"{uptime.Hours}h {uptime.Minutes}m {uptime.Seconds}s"; }
     private static string GetNetDevice() { try { return NetworkManager.PrimaryDevice?.Name ?? "None"; } catch { return "None"; } }
     private static string GetIP() { try { var config = NetworkConfigManager.Get(NetworkManager.PrimaryDevice); return config?.IPAddress?.ToString() ?? "N/A"; } catch { return "N/A"; } }
@@ -315,7 +463,7 @@ public class PingCommand : BaseCommand
                 dnsClient.Connect(new Address(8, 8, 8, 8));
                 dnsClient.SendAsk(target);
                 ip = dnsClient.Receive(5000);
-                if (ip == null || ip.Hash == 0) return $"Cannot resolve: {target}";
+                if (ip == null || ip.GetHashCode() == 0) return $"Cannot resolve: {target}";
             }
 
             var sb = new StringBuilder();
@@ -327,9 +475,9 @@ public class PingCommand : BaseCommand
                 try
                 {
                     using var client = new TcpClient(new IPEndPoint(IPAddress.Any, 0));
-                    var result = client.BeginConnect(new IPAddress(ip.ToByteArray()), 80, null, null);
-                    success = result.AsyncWaitHandle.WaitOne(2000, false);
-                    if (success) client.EndConnect(result);
+                    //var result = client.BeginConnect(new IPAddress(ip.ToByteArray()), 80, null, null);
+                    //success = result.AsyncWaitHandle.WaitOne(2000, false);
+                    //if (success) client.EndConnect(result);
                 }
                 catch { success = false; }
 
@@ -392,13 +540,13 @@ public class WgetCommand : BaseCommand
                 dns.Connect(new Address(8, 8, 8, 8));
                 dns.SendAsk(host);
                 ip = dns.Receive(5000);
-                if (ip == null || ip.Hash == 0) return $"Cannot resolve host: {host}";
+                if (ip == null || ip.GetHashCode() == 0) return $"Cannot resolve host: {host}";
             }
 
             Console.WriteLine($"Connecting to {host}:{port}...");
 
             using var client = new TcpClient(new IPEndPoint(IPAddress.Any, 0));
-            client.Connect(new IPAddress(ip.ToByteArray()), port);
+            //client.Connect(new IPAddress(ip.ToByteArray()), port);
 
             using var stream = client.GetStream();
             using var reader = new StreamReader(stream, Encoding.UTF8);

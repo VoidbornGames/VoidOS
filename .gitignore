@@ -5,6 +5,7 @@
 *.exe
 *.cache
 *.pdb
+*.img
 *.so
 *.deps.json
 *.runtimeconfig.json
