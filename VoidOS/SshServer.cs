@@ -468,6 +468,8 @@ namespace VoidOS.Ssh
 
         public byte[] ReadBytes(int n)
         {
+            if (n < 0) throw new InvalidOperationException($"SSH buffer read length invalid: {n}");
+            if (n == 0) return Array.Empty<byte>();
             if (Position + n > Data.Length) throw new InvalidOperationException("SSH buffer underflow");
             var b = new byte[n];
             Buffer.BlockCopy(Data, Position, b, 0, n);
@@ -484,6 +486,7 @@ namespace VoidOS.Ssh
         public byte[] ReadStringBytes()
         {
             uint len = ReadUInt32();
+            if (len > int.MaxValue) throw new InvalidOperationException($"SSH string length too large: {len}");
             return ReadBytes((int)len);
         }
 
@@ -496,6 +499,7 @@ namespace VoidOS.Ssh
         {
             uint len = ReadUInt32();
             if (len == 0) return BigInteger.Zero;
+            if (len > int.MaxValue) throw new InvalidOperationException($"SSH mpint length too large: {len}");
             byte[] be = ReadBytes((int)len);
             byte[] le = new byte[be.Length];
             for (int i = 0; i < be.Length; i++) le[i] = be[be.Length - 1 - i];
@@ -734,19 +738,24 @@ namespace VoidOS.Ssh
         public static byte[] DeriveKey(BigInteger K, byte[] H, byte[] sessionId, char letter, int length)
         {
             byte[] kMpint = Mpint(K);
-            var hmac = new Crypto.HmacSha256(kMpint);
-            hmac.Update(H);
-            hmac.Update(new byte[] { (byte)letter });
-            hmac.Update(sessionId);
-            byte[] block = hmac.Final();
+            var hash = new Crypto.Sha256();
+            hash.Update(kMpint);
+            hash.Update(H);
+            hash.Update(new byte[] { (byte)letter });
+            hash.Update(sessionId);
+            byte[] block = hash.Final();
+
             var result = new byte[length];
             int copied = Math.Min(block.Length, length);
             Buffer.BlockCopy(block, 0, result, 0, copied);
+
             while (copied < length)
             {
-                var h2 = new Crypto.HmacSha256(kMpint);
-                h2.Update(block);
-                block = h2.Final();
+                var hash2 = new Crypto.Sha256();
+                hash2.Update(kMpint);
+                hash2.Update(H);
+                hash2.Update(block);
+                block = hash2.Final();
                 int n = Math.Min(block.Length, length - copied);
                 Buffer.BlockCopy(block, 0, result, copied, n);
                 copied += n;
@@ -966,6 +975,11 @@ namespace VoidOS.Ssh
             Crypto.Rng.GetBytes(pad);
             Buffer.BlockCopy(pad, 0, frame, 5 + payload.Length, paddingLen);
 
+            if (cipher != null && cipherCounter != null)
+            {
+                cipher.CtrCrypt(frame, 0, 4 + packetLength, cipherCounter);
+            }
+
             if (macKey != null)
             {
                 var macInput = new byte[4 + 4 + packetLength];
@@ -974,66 +988,76 @@ namespace VoidOS.Ssh
                 byte[] tag = Crypto.HmacSha256.Mac(macKey, macInput);
                 Buffer.BlockCopy(tag, 0, frame, 4 + packetLength, 32);
             }
-
-            if (cipher != null && cipherCounter != null)
-            {
-                cipher.CtrCrypt(frame, 0, 4 + packetLength, cipherCounter);
-            }
             return frame;
         }
 
         public static byte[]? Read(Func<byte[], int, int, int> readExact,
             uint sequenceNumber, Crypto.Aes? cipher, byte[]? cipherCounter, byte[]? macKey)
         {
-            int firstBlockSize = cipher != null ? BlockSize : 5;
-            var firstBlock = new byte[firstBlockSize];
-            int got = readExact(firstBlock, 0, firstBlockSize);
+            int headerSize = 4;
+            var header = new byte[headerSize];
+            int got = readExact(header, 0, headerSize);
             if (got == 0) return null;
-            if (got < firstBlockSize) throw new Exception("short read on header");
+            if (got < headerSize) throw new Exception("short read on header");
+
+            byte[] packetLengthBytes = new byte[4];
+            Buffer.BlockCopy(header, 0, packetLengthBytes, 0, 4);
 
             if (cipher != null)
             {
-                cipher.CtrCrypt(firstBlock, 0, firstBlockSize, cipherCounter!);
+                var counterCopy = (byte[])cipherCounter!.Clone();
+                var keystream = new byte[16];
+                cipher.EncryptBlock(counterCopy, 0, keystream, 0);
+                for (int i = 0; i < 4; i++) packetLengthBytes[i] ^= keystream[i];
+                Console.WriteLine($"[SSH] Decrypted header: {BitConverter.ToString(packetLengthBytes, 0, 4)}");
             }
 
-            uint packetLengthRaw = Crypto.BigEndian.ReadUInt32(firstBlock, 0);
+            uint packetLengthRaw = Crypto.BigEndian.ReadUInt32(packetLengthBytes, 0);
             if (packetLengthRaw < 8 || packetLengthRaw > MaxPacket)
-                throw new Exception($"invalid SSH packet length {packetLengthRaw}");
-            int packetLength = (int)packetLengthRaw;
-
-            int remainingEnc = packetLength - (firstBlockSize - 4);
-            if (remainingEnc < 0)
-                throw new Exception($"invalid SSH packet length {packetLengthRaw} (smaller than first block)");
-            int macLen = macKey != null ? 32 : 0;
-            var rest = new byte[remainingEnc + macLen];
-            if (readExact(rest, 0, rest.Length) < rest.Length)
-                throw new Exception("short read on body");
-
-            if (cipher != null)
             {
-                cipher.CtrCrypt(rest, 0, remainingEnc, cipherCounter!);
+                Console.WriteLine($"[SSH] decrypted packetLengthRaw={packetLengthRaw}");
+                throw new Exception($"invalid SSH packet length {packetLengthRaw}");
+            }
+            int packetLength = (int)packetLengthRaw;
+            int totalCiphertextLength = 4 + packetLength;
+            int macLen = macKey != null ? 32 : 0;
+
+            var packetCiphertext = new byte[totalCiphertextLength];
+            Buffer.BlockCopy(header, 0, packetCiphertext, 0, 4);
+            if (totalCiphertextLength > 4)
+            {
+                if (readExact(packetCiphertext, 4, totalCiphertextLength - 4) < totalCiphertextLength - 4)
+                    throw new Exception("short read on packet body");
             }
 
-            var fullPacket = new byte[4 + packetLength];
-            Buffer.BlockCopy(firstBlock, 0, fullPacket, 0, firstBlockSize);
-            Buffer.BlockCopy(rest, 0, fullPacket, firstBlockSize, remainingEnc);
-
-            if (macKey != null)
+            var mac = new byte[macLen];
+            if (macLen > 0)
             {
-                var macInput = new byte[4 + 4 + packetLength];
+                if (readExact(mac, 0, macLen) < macLen)
+                    throw new Exception("short read on MAC");
+            }
+
+            if (macLen > 0)
+            {
+                var macInput = new byte[4 + packetCiphertext.Length];
                 Crypto.BigEndian.WriteUInt32(macInput, 0, sequenceNumber);
-                Buffer.BlockCopy(fullPacket, 0, macInput, 4, 4 + packetLength);
-                byte[] expected = Crypto.HmacSha256.Mac(macKey, macInput);
-                byte[] actual = new byte[32];
-                Buffer.BlockCopy(rest, remainingEnc, actual, 0, 32);
-                if (!ConstantTimeEquals(expected, actual))
+                Buffer.BlockCopy(packetCiphertext, 0, macInput, 4, packetCiphertext.Length);
+                byte[] expected = Crypto.HmacSha256.Mac(macKey!, macInput);
+                if (!ConstantTimeEquals(expected, mac))
                     throw new Exception("SSH MAC verification failed");
             }
 
-            int paddingLen = fullPacket[4];
+            if (cipher != null)
+            {
+                cipher.CtrCrypt(packetCiphertext, 0, packetCiphertext.Length, cipherCounter!);
+            }
+
+            int paddingLen = packetCiphertext[4];
             int payloadLen = packetLength - paddingLen - 1;
+            if (payloadLen < 0) throw new Exception($"invalid SSH payload length {payloadLen}");
             var payload = new byte[payloadLen];
-            Buffer.BlockCopy(fullPacket, 5, payload, 0, payloadLen);
+            Buffer.BlockCopy(packetCiphertext, 5, payload, 0, payloadLen);
+            Console.WriteLine($"[SSH] ReadPacket seq={sequenceNumber} packetLength={packetLength} padding={paddingLen} payloadLen={payloadLen} mac={macLen}");
             return payload;
         }
 
@@ -1163,17 +1187,24 @@ namespace VoidOS.Ssh
 
         private string? _clientBanner;
 
-        private void ExchangeBanners()
-        {
-            Console.WriteLine("[SSH] Reading client banner...");
+            var newDecCipherC2S = new Crypto.Aes(keyC2S);
+            var newDecCounterC2S = ivC2S;
+            var newMacKeyC2S = intKeyC2S;
 
-            var line = new StringBuilder();
-            int totalWaited = 0;
-            while (line.Length < 256)
+            var newEncCipherS2C = new Crypto.Aes(keyS2C);
+            var newEncCounterS2C = ivS2C;
+            var newMacKeyS2C = intKeyS2C;
             {
                 if (!_stream.DataAvailable)
                 {
                     TimerManager.Wait(10);
+            _decCipherC2S = newDecCipherC2S;
+            _decCounterC2S = newDecCounterC2S;
+            _macKeyC2S = newMacKeyC2S;
+
+            _encCipherS2C = newEncCipherS2C;
+            _encCounterS2C = newEncCounterS2C;
+            _macKeyS2C = newMacKeyS2C;
                     totalWaited++;
                     if (totalWaited > 1500)
                     {
@@ -1230,22 +1261,65 @@ namespace VoidOS.Ssh
             if (payload == null || payload.Length == 0 || payload[0] != SshMsg.KexInit)
                 throw new Exception("expected KEXINIT from client");
 
+            Console.WriteLine($"[SSH] Received KEXINIT payload length={payload.Length}");
+            Console.WriteLine($"[SSH] KEXINIT header bytes: {BitConverter.ToString(payload, 0, Math.Min(32, payload.Length))}");
+
             var buf = new SshBuffer(payload);
             buf.Position = 1;
             buf.ReadBytes(16);
-            kex = buf.ReadNameList();
-            hostKey = buf.ReadNameList();
-            c2s = buf.ReadNameList();
-            s2c = buf.ReadNameList();
-            macC2S = buf.ReadNameList();
-            macS2C = buf.ReadNameList();
-            buf.ReadNameList();
-            buf.ReadNameList();
-            buf.ReadNameList();
-            buf.ReadNameList();
-            buf.ReadBool();
-            buf.ReadUInt32();
+            Console.WriteLine($"[SSH] KEXINIT after cookie pos={buf.Position} bytes={BitConverter.ToString(payload, buf.Position, Math.Min(32, payload.Length - buf.Position))}");
+
+            kex = ReadNameListDebug(buf, payload, "kex");
+            hostKey = ReadNameListDebug(buf, payload, "hostKey");
+            c2s = ReadNameListDebug(buf, payload, "c2s");
+            s2c = ReadNameListDebug(buf, payload, "s2c");
+            macC2S = ReadNameListDebug(buf, payload, "macC2S");
+            macS2C = ReadNameListDebug(buf, payload, "macS2C");
+
+            // compression and language lists are not required for our minimal server implementation.
             return payload;
+        }
+
+        private string[] ReadNameListDebug(SshBuffer buf, byte[] payload, string fieldName)
+        {
+            int startPos = buf.Position;
+            Console.WriteLine($"[SSH] ReadNameList {fieldName} at pos={startPos} next={BitConverter.ToString(payload, startPos, Math.Min(16, payload.Length - startPos))}");
+            uint len = buf.ReadUInt32();
+            Console.WriteLine($"[SSH] {fieldName} length={len} available={buf.Remaining}");
+            if (len > buf.Remaining) throw new Exception($"SSH name-list {fieldName} length {len} exceeds remaining {buf.Remaining}");
+            byte[] data = buf.ReadBytes((int)len);
+            string s = Encoding.ASCII.GetString(data);
+            Console.WriteLine($"[SSH] {fieldName} text={s.Substring(0, Math.Min(200, s.Length))}");
+            var list = string.IsNullOrEmpty(s) ? Array.Empty<string>() : s.Split(',');
+            Console.WriteLine($"[SSH] {fieldName} count={list.Length} pos={buf.Position}");
+            return list;
+        }
+
+        private void TryReadOptionalNameList(SshBuffer buf, byte[] payload, string fieldName)
+        {
+            try
+            {
+                ReadNameListDebug(buf, payload, fieldName);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SSH] Optional field {fieldName} parse failed: {ex.Message}");
+                throw;
+            }
+        }
+
+        private void TrySkipOptionalBoolAndReserved(SshBuffer buf)
+        {
+            if (buf.Remaining >= 1)
+            {
+                bool val = buf.ReadBool();
+                Console.WriteLine($"[SSH] Read bool: {val}");
+            }
+            if (buf.Remaining >= 4)
+            {
+                uint reserved = buf.ReadUInt32();
+                Console.WriteLine($"[SSH] Read reserved uint32: {reserved}");
+            }
         }
 
         public void WritePacket(byte[] payload)
@@ -1261,19 +1335,21 @@ namespace VoidOS.Ssh
             int ReadExact(byte[] buf, int off, int len)
             {
                 int total = 0;
+                int waitCycles = 0;
                 while (total < len)
                 {
-                    int waited = 0;
-                    while (!_stream.DataAvailable && waited < 1000)
-                    {
-                        TimerManager.Wait(10);
-                        waited++;
-                    }
-                    if (!_stream.DataAvailable) return total;
-
                     int n = _stream.Read(buf, off + total, len - total);
-                    if (n == 0) return total;
+                    if (n == 0)
+                    {
+                        if (++waitCycles > 500)
+                        {
+                            break;
+                        }
+                        TimerManager.Wait(10);
+                        continue;
+                    }
                     total += n;
+                    waitCycles = 0;
                 }
                 return total;
             }

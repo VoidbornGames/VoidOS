@@ -152,12 +152,16 @@ public class Kernel : Sys.Kernel
 
     private void SetStaticConfig(INetworkDevice device)
     {
+        // QEMU user-mode networking uses the 10.0.2.0/24 network by default.
+        // When using QEMU host forwarding (for example hostfwd=tcp::2222-:22),
+        // the guest should be reachable via 10.0.2.15 with gateway 10.0.2.2.
         var config = new IPConfig(
-            new Address(192, 168, 1, 100),
+            new Address(10, 0, 2, 15),
             new Address(255, 255, 255, 0),
-            new Address(192, 168, 1, 1)
+            new Address(10, 0, 2, 2)
         );
         NetworkConfigManager.AddConfig(device, config);
+        DNSConfig.Add(new Address(10, 0, 2, 3));
     }
 
     private void StartServices()

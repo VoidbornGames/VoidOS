@@ -6,12 +6,32 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cosmos.Kernel" Version="3.0.78" />
-    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.78" />
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.82" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.82" />
   </ItemGroup>
 
 	<ItemGroup>
 		<GCCProject Include="./src/C/" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <PackageReference Update="Cosmos.Build.Analyzer.Patcher" Version="3.0.82">
+	    <PrivateAssets>all</PrivateAssets>
+	    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+	  </PackageReference>
+	  <PackageReference Update="Cosmos.Build.Asm" Version="3.0.82" />
+	  <PackageReference Update="Cosmos.Build.CC" Version="3.0.82" />
+	  <PackageReference Update="Cosmos.Build.Common" Version="3.0.82" />
+	  <PackageReference Update="Cosmos.Build.Ilc" Version="3.0.82" />
+	  <PackageReference Update="Cosmos.Build.Patcher" Version="3.0.82" />
+	  <PackageReference Update="Cosmos.Kernel.Core.X64" Version="3.0.82" />
+	  <PackageReference Update="Cosmos.Kernel.HAL.X64" Version="3.0.82" />
+	  <PackageReference Update="Cosmos.Kernel.Native.MultiArch" Version="3.0.82" />
+	  <PackageReference Update="Cosmos.Kernel.Native.X64" Version="3.0.82" />
+	  <PackageReference Update="Cosmos.Kernel.SourceGenerators" Version="3.0.82">
+	    <PrivateAssets>all</PrivateAssets>
+	    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+	  </PackageReference>
 	</ItemGroup>
 
 </Project>
